@@ -22,17 +22,21 @@ jobs:
           python-version: '3.11'
 
       - name: 📦 Install dependencies
-        run: pip install requests pandas
+        run: pip install requests pandas duckdb pyarrow
 
       - name: 🌬️ Update today's file with all missing 15-min wind data
         run: python scripts/collect_wind_15min.py
+
+      - name: 🧩 Append new data to main wind database
+        run: python scripts/append_to_wind_database.py
 
       - name: 📤 Commit and push updated wind data
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
-          git add data/
-          git commit -m "🌬️ Update daily wind file: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git add data/ database/
+          git commit -m "🌬️ Update daily + database wind data: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
+
