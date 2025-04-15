@@ -1,28 +1,29 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
-import os
-import duckdb
+from datetime import datetime, timedelta, timezone, date
 from zoneinfo import ZoneInfo
 from dateutil.rrule import rrule, DAILY
+import duckdb
+import os
 
 # --- CONFIG ---
-DB_PATH = "database/full_wind_data"
-QUARTER_FREQ = "15min"
 API_TOKEN = "YOUR_API_TOKEN_HERE"
-BASE_URL = "https://api.esios.ree.es/indicators/540"
+BASE_URL = "https://api.esios.ree.es/indicators/540"  # Wind
 HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
     "x-api-key": API_TOKEN,
 }
+DB_PATH = "database/full_wind_data"
+QUARTER_FREQ = "15min"
 
-# --- Load current database ---
+# --- Load database ---
 os.makedirs("database", exist_ok=True)
 if os.path.exists(f"{DB_PATH}.csv"):
     df_db = pd.read_csv(f"{DB_PATH}.csv", parse_dates=["datetime"])
 else:
-    df_db = pd.DataFrame(columns=["value", "datetime", "datetime_utc", "tz_time", "geo_id", "geo_name"])
+    print("⚠️ No existing DB. Exiting.")
+    exit()
 
 # --- Generate expected timestamps ---
 start = df_db["datetime"].min()
@@ -38,25 +39,22 @@ expected = pd.date_range(
     freq=QUARTER_FREQ,
     tz="UTC"
 )
-
 existing = pd.to_datetime(df_db["datetime_utc"])
 missing = expected.difference(existing)
 
-# --- If nothing is missing ---
+# --- Exit if no missing ---
 if missing.empty:
     print("✅ No missing timestamps.")
-    os.makedirs("reports", exist_ok=True)
-    with open("reports/missing_data_report.txt", "w") as f:
-        f.write(f"✅ No missing data. Checked on {datetime.now().date()}.\n")
-    exit()
+    missing_days = []
+else:
+    print(f"🔍 Found {len(missing)} missing timestamps.")
+    missing_days = sorted(set(ts.date() for ts in missing))
 
-print(f"🔍 Found {len(missing)} missing timestamps. Attempting to fetch...")
-
-# --- Fetch in daily chunks ---
-missing_days = sorted(set(ts.date() for ts in missing))
+# --- Fetch missing data ---
 all_new = []
+failed_days = []
 
-for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
+for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]) if missing_days else []:
     day_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
     day_end = day_start + timedelta(days=1)
 
@@ -71,16 +69,21 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
         res = requests.get(BASE_URL, headers=HEADERS, params=params)
         if res.status_code == 403:
             print("⛔ 403 Forbidden – Token expired or unauthorized")
+            failed_days.append(str(day.date()))
             continue
         res.raise_for_status()
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
-        df["datetime"] = pd.to_datetime(df["datetime"])
-        all_new.append(df)
+        if not df.empty and "datetime" in df.columns:
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            all_new.append(df)
+        else:
+            failed_days.append(str(day.date()))
     except Exception as e:
         print(f"  ❌ Error on {day.date()}: {e}")
+        failed_days.append(str(day.date()))
 
-# --- Combine and Save ---
+# --- Save to all formats ---
 if all_new:
     df_new = pd.concat(all_new)
     df_combined = pd.concat([df_db, df_new])
@@ -93,22 +96,40 @@ if all_new:
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_combined")
     con.close()
 
-    print(f"✅ Added {len(df_new)} rows. DB now has {len(df_combined)} rows.")
-
+    print(f"✅ Appended {len(df_new)} rows. DB now has {len(df_combined)} rows.")
 else:
     print("⚠️ No new data fetched.")
 
-# --- Save report ---
+# --- Save Markdown Report ---
 os.makedirs("reports", exist_ok=True)
-report_path = "reports/missing_data_report.txt"
-with open(report_path, "w") as f:
-    if all_new:
-        f.write(f"✅ Filled {len(df_new)} missing entries on {datetime.now().date()}.\n")
-        f.write(f"🗓️ Missing days filled: {', '.join(str(d) for d in missing_days)}\n")
-    else:
-        f.write(f"⚠️ Could not fill missing data for days: {', '.join(str(d) for d in missing_days)}\n")
+report_path = f"reports/missing_data_report_{date.today()}.md"
 
-print(f"📝 Report saved to {report_path}")
+with open(report_path, "w") as f:
+    f.write(f"# 📊 Weekly Wind Data Integrity Report\n\n")
+    f.write(f"🗓️ **Report Date:** `{date.today()}`\n\n")
+
+    if missing.empty:
+        f.write("✅ All expected data is present. No missing days.\n")
+    else:
+        f.write("## ❌ Missing Timestamps Found\n")
+        f.write(f"Total Missing Timestamps: `{len(missing)}`\n\n")
+        if failed_days:
+            f.write("### ⚠️ Days that could not be retrieved:\n\n")
+            f.write("| # | Missing Day |\n|---|--------------|\n")
+            for i, d in enumerate(failed_days, 1):
+                f.write(f"| {i} | {d} |\n")
+        else:
+            f.write("✅ All missing values successfully retrieved.\n")
+
+    f.write("\n---\n")
+    f.write("🛠️ Ensure token is valid and retry for any failed days.\n")
+    f.write("✅ Data stored in:\n")
+    f.write("- `database/full_wind_data.csv`\n")
+    f.write("- `database/full_wind_data.parquet`\n")
+    f.write("- `database/full_wind_data.duckdb`\n\n")
+    f.write("👤 Report auto-generated by the wind pipeline.\n")
+    f.write("Created with 💚 by *Amir Torbati*\n")
+
 
 
 
