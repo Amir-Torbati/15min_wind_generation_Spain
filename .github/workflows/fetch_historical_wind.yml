@@ -1,0 +1,31 @@
+name: Fetch Historical Wind Data (Manual Run Only)
+
+on:
+  workflow_dispatch:  # 🔘 Manual trigger only
+
+jobs:
+  fetch-wind-history:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v3
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install dependencies
+        run: pip install pandas requests python-dateutil duckdb pyarrow
+
+      - name: 💨 Run historical wind fetch script
+        run: python scripts/fetch_historical_data.py
+
+      - name: 📤 Commit & Push to database/
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add database/
+          git commit -m "🕰️ Add full historical wind data"
+          git push
