@@ -49,7 +49,7 @@ while current_local < end_date_local:
         df = pd.DataFrame(values)
 
         if not df.empty and "datetime" in df.columns:
-            df["datetime"] = pd.to_datetime(df["datetime"])
+            df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
             df["datetime"] = df["datetime"].dt.tz_convert("Europe/Madrid")
             df["date_local"] = df["datetime"].dt.date
             df["time_local"] = df["datetime"].dt.time
@@ -74,3 +74,4 @@ if all_data:
     print(f"✅ Done! Saved {len(df_all)} rows to 'database/' folder.")
 else:
     print("⚠️ No data was fetched.")
+
