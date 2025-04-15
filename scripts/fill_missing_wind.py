@@ -32,7 +32,7 @@ if df_db.empty:
     print("⚠️ Database is empty. Exiting.")
     exit()
 
-start = df_db["datetime"].min()
+start = df_db["datetime"].min().astimezone(ZoneInfo("Europe/Madrid"))
 end = datetime.now(tz=ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
 
 expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
@@ -105,6 +105,7 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
+
 
 
 
