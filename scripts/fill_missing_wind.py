@@ -105,13 +105,3 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
-
-
-
-
-
-
-
-
-
-
