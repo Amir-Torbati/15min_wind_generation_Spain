@@ -1,6 +1,6 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
 from dateutil.relativedelta import relativedelta
@@ -51,7 +51,8 @@ while current_local < end_date_local:
         df = pd.DataFrame(values)
 
         if not df.empty and "datetime" in df.columns:
-            df["datetime"] = pd.to_datetime(df["datetime"])
+            # ✅ FIX: Ensure timezone-aware parsing
+            df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
             all_data.append(df)
 
     except Exception as e:
@@ -67,7 +68,7 @@ if not all_data:
 df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
 
 # Add timezone-aware columns
-df_all["datetime_utc"] = df_all["datetime"].dt.tz_convert("UTC")
+df_all["datetime_utc"] = df_all["datetime"]  # already UTC
 df_all["datetime_local"] = df_all["datetime"].dt.tz_convert("Europe/Madrid")
 
 # Split into date and time columns
@@ -76,7 +77,7 @@ df_all["time_local"] = df_all["datetime_local"].dt.strftime("%H:%M")
 df_all["date_utc"] = df_all["datetime_utc"].dt.date
 df_all["time_utc"] = df_all["datetime_utc"].dt.strftime("%H:%M")
 
-# Final tidy columns
+# Final tidy DataFrame
 df_tidy = df_all[[
     "date_local", "time_local", "date_utc", "time_utc", "value"
 ]].rename(columns={"value": "value_mw"}).sort_values(["date_utc", "time_utc"]).reset_index(drop=True)
@@ -92,13 +93,16 @@ duckdb_path = "database/full_wind_data.duckdb"
 df_tidy.to_csv(csv_path, index=False)
 df_tidy.to_parquet(parquet_path, index=False)
 
+# Save to DuckDB
 con = duckdb.connect(duckdb_path)
 con.execute("CREATE OR REPLACE TABLE wind_tidy AS SELECT * FROM df_tidy")
 con.close()
 
-print(f"✅ Done! Saved {len(df_tidy)} rows to:")
+# --- DONE ---
+print(f"\n✅ Done! Saved {len(df_tidy)} rows to:")
 print(f"   • {csv_path}")
 print(f"   • {parquet_path}")
 print(f"   • {duckdb_path} (table: wind_tidy)")
+
 
 
