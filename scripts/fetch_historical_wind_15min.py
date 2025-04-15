@@ -10,7 +10,7 @@ from dateutil.rrule import rrule, DAILY
 DB_PATH = "database/full_wind_data"
 REPORT_PATH = "reports/missing_report.md"
 QUARTER_FREQ = "15min"
-API_TOKEN = "YOUR_API_TOKEN_HERE"  # Replace with your actual token or GitHub secret
+API_TOKEN = "YOUR_API_TOKEN_HERE"  # Replace with your actual token
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
     "Accept": "application/json",
@@ -18,38 +18,35 @@ HEADERS = {
     "x-api-key": API_TOKEN,
 }
 
-# --- Load DB ---
+TZ = ZoneInfo("Europe/Madrid")
+
+# --- Load database ---
 os.makedirs("database", exist_ok=True)
 os.makedirs("reports", exist_ok=True)
 
 if os.path.exists(f"{DB_PATH}.csv"):
     df_db = pd.read_csv(f"{DB_PATH}.csv", parse_dates=["datetime"])
 else:
-    df_db = pd.DataFrame(columns=["value", "datetime", "datetime_utc", "tz_time", "geo_id", "geo_name"])
+    df_db = pd.DataFrame(columns=["value", "datetime", "geo_id", "geo_name", "date_local", "time_local"])
 
-# --- Ensure tidy datetime format ---
-if not pd.api.types.is_datetime64tz_dtype(df_db["datetime"]):
-    df_db["datetime"] = pd.to_datetime(df_db["datetime"]).dt.tz_convert("Europe/Madrid")
+# --- Ensure tidy local datetime ---
+df_db["datetime"] = pd.to_datetime(df_db["datetime"], utc=True).dt.tz_convert(TZ)
+df_db["date_local"] = df_db["datetime"].dt.date
+df_db["time_local"] = df_db["datetime"].dt.time
 
-# Add tidy columns if not exist
-if "date_local" not in df_db.columns:
-    df_db["date_local"] = df_db["datetime"].dt.date
-if "time_local" not in df_db.columns:
-    df_db["time_local"] = df_db["datetime"].dt.time
-
-# --- Determine missing LOCAL timestamps ---
+# --- Detect missing timestamps ---
 if df_db.empty:
     print("⚠️ Database is empty. Exiting.")
     exit()
 
 start = df_db["datetime"].min()
-end = datetime.now(tz=ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
+end = datetime.now(tz=TZ).replace(second=0, microsecond=0)
 
-expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
+expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
 existing = df_db["datetime"]
 missing = expected.difference(existing)
 
-if not missing.any():
+if missing.empty:
     print("✅ No missing timestamps.")
     with open(REPORT_PATH, "w") as f:
         f.write("# 📊 Wind Data Missing Report\n\n✅ All data is complete.\n")
@@ -62,7 +59,7 @@ all_new = []
 failed_days = []
 
 for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
-    day_start = datetime.combine(day, datetime.min.time(), tzinfo=ZoneInfo("Europe/Madrid"))
+    day_start = datetime.combine(day, datetime.min.time(), tzinfo=TZ)
     day_end = day_start + timedelta(days=1)
 
     params = {
@@ -72,25 +69,25 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
     }
 
     try:
+        print(f"📡 Fetching: {day}")
         res = requests.get(BASE_URL, headers=HEADERS, params=params)
         if res.status_code == 403:
-            print(f"⛔ Forbidden – Token expired on {day.date()}")
-            failed_days.append(day.date())
+            print(f"⛔ Token error on {day}")
+            failed_days.append(day)
             continue
         res.raise_for_status()
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert("Europe/Madrid")
-        df["datetime_utc"] = df["datetime"].dt.tz_convert("UTC")
-        df["tz_time"] = df["datetime_utc"].dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ)
         df["date_local"] = df["datetime"].dt.date
         df["time_local"] = df["datetime"].dt.time
+        df = df[["value", "datetime", "geo_id", "geo_name", "date_local", "time_local"]]
         all_new.append(df)
     except Exception as e:
-        print(f"  ❌ Error on {day.date()}: {e}")
-        failed_days.append(day.date())
+        print(f"  ❌ Error on {day}: {e}")
+        failed_days.append(day)
 
-# --- Merge + Save ---
+# --- Merge and Save ---
 if all_new:
     df_new = pd.concat(all_new)
     df_combined = pd.concat([df_db, df_new])
@@ -107,7 +104,7 @@ if all_new:
 else:
     print("⚠️ No new data fetched.")
 
-# --- Write Markdown Report ---
+# --- Save Markdown Report ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Weekly Wind Data Missing Report\n\n")
     if failed_days:
@@ -119,4 +116,3 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
-
