@@ -27,25 +27,25 @@ if os.path.exists(f"{DB_PATH}.csv"):
 else:
     df_db = pd.DataFrame(columns=["value", "datetime", "datetime_utc", "tz_time", "geo_id", "geo_name"])
 
-# --- Determine missing LOCAL timestamps ---
+# --- Ensure datetime is timezone-aware ---
+if not pd.api.types.is_datetime64tz_dtype(df_db["datetime"]):
+    df_db["datetime"] = pd.to_datetime(df_db["datetime"]).dt.tz_localize("Europe/Madrid")
+else:
+    df_db["datetime"] = df_db["datetime"].dt.tz_convert("Europe/Madrid")
+
+# --- Identify Missing Time Slots ---
 if df_db.empty:
     print("⚠️ Database is empty. Exiting.")
     exit()
 
-# Ensure datetime column is timezone-aware in Europe/Madrid
-if df_db["datetime"].dt.tz is None:
-    df_db["datetime"] = df_db["datetime"].dt.tz_localize("Europe/Madrid")
-else:
-    df_db["datetime"] = df_db["datetime"].dt.tz_convert("Europe/Madrid")
-
 start = df_db["datetime"].min()
 end = datetime.now(tz=ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
 
-expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ)
+expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
 existing = df_db["datetime"]
 missing = expected.difference(existing)
 
-if not missing.any():
+if missing.empty:
     print("✅ No missing timestamps.")
     with open(REPORT_PATH, "w") as f:
         f.write("# 📊 Wind Data Missing Report\n\n✅ All data is complete.\n")
@@ -53,6 +53,7 @@ if not missing.any():
 
 print(f"🔍 Found {len(missing)} missing timestamps. Attempting to fetch...")
 
+# --- Fetch Missing Days ---
 missing_days = sorted(set(ts.date() for ts in missing))
 all_new = []
 failed_days = []
@@ -76,13 +77,14 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
         res.raise_for_status()
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert("Europe/Madrid")
-        all_new.append(df)
+        if not df.empty:
+            df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert("Europe/Madrid")
+            all_new.append(df)
     except Exception as e:
-        print(f"  ❌ Error on {day.date()}: {e}")
+        print(f"❌ Error on {day.date()}: {e}")
         failed_days.append(day.date())
 
-# --- Merge + Save ---
+# --- Combine and Save ---
 if all_new:
     df_new = pd.concat(all_new)
     df_combined = pd.concat([df_db, df_new])
@@ -99,17 +101,15 @@ if all_new:
 else:
     print("⚠️ No new data fetched.")
 
-# --- Write Markdown Report ---
+# --- Markdown Report ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Weekly Wind Data Missing Report\n\n")
     if failed_days:
         f.write("## ⚠️ Days that could not be retrieved:\n\n")
         f.write("| # | Missing Day |\n|---|--------------|\n")
-        for i, d in enumerate(failed_days, start=1):
+        for i, d in enumerate(failed_days, 1):
             f.write(f"| {i} | {d} |\n")
     else:
         f.write("✅ All requested data was successfully filled.\n")
 
-print("📄 Report generated at:", REPORT_PATH)
-
-
+print("📄 Report saved to:", REPORT_PATH)
