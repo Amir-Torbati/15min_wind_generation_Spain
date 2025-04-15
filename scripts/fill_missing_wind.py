@@ -4,10 +4,18 @@ from datetime import datetime, timedelta, timezone
 import os
 import duckdb
 from zoneinfo import ZoneInfo
+from dateutil.rrule import rrule, DAILY
 
 # --- CONFIG ---
 DB_PATH = "database/full_wind_data"
 QUARTER_FREQ = "15min"
+API_TOKEN = "YOUR_API_TOKEN_HERE"
+BASE_URL = "https://api.esios.ree.es/indicators/540"
+HEADERS = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "x-api-key": API_TOKEN,
+}
 
 # --- Load current database ---
 os.makedirs("database", exist_ok=True)
@@ -37,21 +45,14 @@ missing = expected.difference(existing)
 # --- If nothing is missing ---
 if missing.empty:
     print("✅ No missing timestamps.")
+    os.makedirs("reports", exist_ok=True)
+    with open("reports/missing_data_report.txt", "w") as f:
+        f.write(f"✅ No missing data. Checked on {datetime.now().date()}.\n")
     exit()
 
 print(f"🔍 Found {len(missing)} missing timestamps. Attempting to fetch...")
 
-# --- API Config ---
-API_TOKEN = "YOUR_API_TOKEN_HERE"
-BASE_URL = "https://api.esios.ree.es/indicators/540"  # Wind
-HEADERS = {
-    "Accept": "application/json",
-    "Content-Type": "application/json",
-    "x-api-key": API_TOKEN,
-}
-
 # --- Fetch in daily chunks ---
-from dateutil.rrule import rrule, DAILY
 missing_days = sorted(set(ts.date() for ts in missing))
 all_new = []
 
@@ -93,8 +94,22 @@ if all_new:
     con.close()
 
     print(f"✅ Added {len(df_new)} rows. DB now has {len(df_combined)} rows.")
+
 else:
     print("⚠️ No new data fetched.")
+
+# --- Save report ---
+os.makedirs("reports", exist_ok=True)
+report_path = "reports/missing_data_report.txt"
+with open(report_path, "w") as f:
+    if all_new:
+        f.write(f"✅ Filled {len(df_new)} missing entries on {datetime.now().date()}.\n")
+        f.write(f"🗓️ Missing days filled: {', '.join(str(d) for d in missing_days)}\n")
+    else:
+        f.write(f"⚠️ Could not fill missing data for days: {', '.join(str(d) for d in missing_days)}\n")
+
+print(f"📝 Report saved to {report_path}")
+
 
 
 
