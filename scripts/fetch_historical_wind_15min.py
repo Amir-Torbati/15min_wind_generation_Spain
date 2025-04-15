@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime
 import os
 from dateutil.relativedelta import relativedelta
-import duckdb
 
 # --- CONFIG ---
 API_TOKEN = "478a759c0ef1ce824a835ddd699195ff0f66a9b5ae3b477e88a579c6b7ec47c5"
@@ -15,12 +14,12 @@ HEADERS = {
 }
 
 # --- SETUP ---
-start_date = datetime(2022, 1, 1)
+start_date = datetime(2023, 1, 1)
 end_date = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
 all_data = []
 
 # --- FETCH LOOP (month by month) ---
-print(f"📡 Fetching wind data from {start_date.date()} to {end_date.date()}...")
+print(f"📡 Fetching 15-min wind data from {start_date.date()} to {end_date.date()}...")
 current = start_date
 
 while current < end_date:
@@ -30,20 +29,22 @@ while current < end_date:
     params = {
         "start_date": current.isoformat() + "Z",
         "end_date": period_end.isoformat() + "Z",
-        "time_trunc": "quarter-hour"
+        "time_trunc": "quarter-hour"  # ✅ Ensures 15-min resolution
     }
 
     try:
-        print(f"  ⏳ {current.date()} → {period_end.date()}")
+        print(f"  ⏳ Fetching: {current.date()} → {period_end.date()}")
         res = requests.get(BASE_URL, headers=HEADERS, params=params)
         res.raise_for_status()
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
+
         if not df.empty and "datetime" in df.columns:
             df["datetime"] = pd.to_datetime(df["datetime"])
             all_data.append(df)
+
     except Exception as e:
-        print(f"  ❌ Error fetching {current.date()}: {e}")
+        print(f"  ❌ Error on {current.date()}: {e}")
 
     current = period_end
 
@@ -53,17 +54,20 @@ os.makedirs("database", exist_ok=True)
 if all_data:
     df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
 
-    # Save files
+    # Save CSV & Parquet
     df_all.to_csv("database/full_wind_data.csv", index=False)
     df_all.to_parquet("database/full_wind_data.parquet", index=False)
 
+    # Save to DuckDB
+    import duckdb
     con = duckdb.connect("database/full_wind_data.duckdb")
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_all")
     con.close()
 
-    print(f"✅ Saved {len(df_all)} rows to database/")
+    print(f"✅ Done! Saved {len(df_all)} rows to 'database/' folder.")
 else:
-    print("⚠️ No data was fetched.")
+    print("⚠️ No data fetched. Please check token or API limits.")
+
 
 
 
