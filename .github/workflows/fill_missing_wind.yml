@@ -1,0 +1,37 @@
+name: Fill Missing Wind Data (Weekly Check)
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Every Monday at 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  fill-missing-wind:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v3
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install dependencies
+        run: pip install requests pandas duckdb pyarrow
+
+      - name: 🧩 Scan and fill missing wind data
+        run: python scripts/fill_missing_wind.py
+
+      - name: 📤 Commit and push updated database
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add database/
+          git commit -m "🧩 Filled missing wind data: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
+          git pull --rebase --autostash
+          git push
