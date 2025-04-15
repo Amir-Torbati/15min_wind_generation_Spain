@@ -1,17 +1,17 @@
-name: 🕰️ Fetch Full Wind History (15-Minute Resolution)
+name: Fetch Full Historical Wind Data (15min)
 
 permissions:
   contents: write
 
 on:
-  workflow_dispatch:  # Manual trigger only (for one-time backfill)
+  workflow_dispatch:  # 👉 Run manually from GitHub Actions tab
 
 jobs:
-  fetch-full-wind-history:
+  fetch-historical-wind:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout repo
         uses: actions/checkout@v3
 
       - name: 🐍 Set up Python
@@ -19,20 +19,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Python dependencies
-        run: pip install pandas requests duckdb pyarrow python-dateutil
+      - name: 📦 Install dependencies
+        run: pip install requests pandas pyarrow duckdb python-dateutil
 
-      - name: 🌬️ Run full wind data fetch script
+      - name: ⚡ Fetch historical wind (15min) and save to database
         run: python scripts/fetch_historical_wind_15min.py
 
-      - name: 📤 Commit and push updated database
+      - name: 📤 Commit and push database
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           git add database/
-          git commit -m "🌬️ Add full 15-min wind history: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git commit -m "🕰️ Add full historical wind 15min data" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
+
 
 
