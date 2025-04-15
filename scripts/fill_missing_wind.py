@@ -32,19 +32,20 @@ if df_db.empty:
     print("⚠️ Database is empty. Exiting.")
     exit()
 
-start = df_db["datetime"].min()
-if start.tzinfo is None:
-    start = start.replace(tzinfo=ZoneInfo("Europe/Madrid"))
+# Ensure datetime column is timezone-aware in Europe/Madrid
+if df_db["datetime"].dt.tz is None:
+    df_db["datetime"] = df_db["datetime"].dt.tz_localize("Europe/Madrid")
 else:
-    start = start.astimezone(ZoneInfo("Europe/Madrid"))
+    df_db["datetime"] = df_db["datetime"].dt.tz_convert("Europe/Madrid")
 
+start = df_db["datetime"].min()
 end = datetime.now(tz=ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
 
-expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
-existing = pd.to_datetime(df_db["datetime"]).dt.tz_localize(None)
-missing = [ts for ts in expected if ts.replace(tzinfo=None) not in existing]
+expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ)
+existing = df_db["datetime"]
+missing = expected.difference(existing)
 
-if not missing:
+if not missing.any():
     print("✅ No missing timestamps.")
     with open(REPORT_PATH, "w") as f:
         f.write("# 📊 Wind Data Missing Report\n\n✅ All data is complete.\n")
@@ -75,7 +76,7 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
         res.raise_for_status()
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
-        df["datetime"] = pd.to_datetime(df["datetime"])
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert("Europe/Madrid")
         all_new.append(df)
     except Exception as e:
         print(f"  ❌ Error on {day.date()}: {e}")
