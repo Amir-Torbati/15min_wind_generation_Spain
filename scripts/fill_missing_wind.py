@@ -1,12 +1,16 @@
 import os
-import requests
 import pandas as pd
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-from dateutil import tz
 import duckdb
+from datetime import datetime, timedelta
+from dateutil import tz
+from zoneinfo import ZoneInfo
+import requests
 
 # --- CONFIG ---
+DATA_DIR = "data"
+DB_DIR = "database"
+REPORTS_DIR = "reports"
+DB_PATH = os.path.join(DB_DIR, "full_wind_data")
 API_TOKEN = "478a759c0ef1ce824a835ddd699195ff0f66a9b5ae3b477e88a579c6b7ec47c5"
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
@@ -14,78 +18,82 @@ HEADERS = {
     "Content-Type": "application/json",
     "x-api-key": API_TOKEN,
 }
-DB_PATH = "database/full_wind_data"
-REPORTS_DIR = "reports"
 
-os.makedirs("database", exist_ok=True)
+# --- Ensure directories exist ---
+os.makedirs(DB_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-# --- Load existing data ---
-df = pd.read_csv(f"{DB_PATH}.csv", parse_dates=["datetime"])
-df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+# --- Load existing database ---
+all_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".csv")]
+all_data = []
 
-# --- Generate expected timestamps ---
-start = df["datetime"].min()
-end = df["datetime"].max()
+for f in sorted(all_files):
+    df = pd.read_csv(os.path.join(DATA_DIR, f), parse_dates=["datetime"])
+    all_data.append(df)
+
+df_all = pd.concat(all_data).drop_duplicates(subset="datetime").sort_values("datetime")
+
+# --- Identify expected timestamps ---
+start = df_all["datetime"].min()
+end = df_all["datetime"].max()
 expected = pd.date_range(start=start, end=end, freq="15min", tz="UTC")
 
 # --- Find missing timestamps ---
-existing = pd.Series(df["datetime"].unique())
-missing = expected.difference(existing)
+missing_times = expected.difference(df_all["datetime"])
+report_lines = []
 
-log_lines = []
-if missing.empty:
-    log_lines.append("✅ No missing values found in wind database.")
+if not missing_times.empty:
+    report_lines.append(f"⛔ Missing timestamps found: {len(missing_times)}")
+    report_lines.append(f"Date range: {missing_times.min()} to {missing_times.max()}")
 else:
-    log_lines.append(f"❗ Missing timestamps found: {len(missing)}")
-    log_lines += [f"  - {ts}" for ts in missing[:10]]
-    if len(missing) > 10:
-        log_lines.append("  ...")
+    report_lines.append("✅ No missing timestamps found.")
 
-    # --- Download missing data in chunks ---
-    filled_rows = []
+# --- Attempt to fetch missing data if any ---
+new_rows = []
+if not missing_times.empty:
+    for ts in missing_times:
+        start_utc = ts.isoformat()
+        end_utc = (ts + timedelta(minutes=15)).isoformat()
 
-    for ts in missing:
-        ts_end = ts + timedelta(minutes=15)
         params = {
-            "start_date": ts.isoformat(),
-            "end_date": ts_end.isoformat(),
-            "time_trunc": "quarter-hour",
+            "start_date": start_utc + "Z",
+            "end_date": end_utc + "Z",
+            "time_trunc": "quarter-hour"
         }
+
         try:
             res = requests.get(BASE_URL, headers=HEADERS, params=params)
             if res.status_code == 403:
-                log_lines.append("🚫 Token expired or unauthorized (403)")
-                break
+                report_lines.append(f"❌ Token expired when fetching {ts}")
+                continue
             res.raise_for_status()
-            data = res.json()["indicator"]["values"]
-            if data:
-                df_new = pd.DataFrame(data)
-                df_new["datetime"] = pd.to_datetime(df_new["datetime"], utc=True)
-                filled_rows.append(df_new)
+            values = res.json()["indicator"]["values"]
+            df_patch = pd.DataFrame(values)
+            if not df_patch.empty:
+                df_patch["datetime"] = pd.to_datetime(df_patch["datetime"])
+                new_rows.append(df_patch)
         except Exception as e:
-            log_lines.append(f"❌ Failed to fetch {ts}: {e}")
+            report_lines.append(f"❌ Error fetching {ts}: {e}")
 
-    if filled_rows:
-        df_missing = pd.concat(filled_rows)
-        df_combined = pd.concat([df, df_missing]).drop_duplicates(subset=["datetime"])
-        df_combined = df_combined.sort_values("datetime")
+if new_rows:
+    df_patch_all = pd.concat(new_rows).drop_duplicates(subset="datetime")
+    df_combined = pd.concat([df_all, df_patch_all]).drop_duplicates(subset="datetime").sort_values("datetime")
+    report_lines.append(f"✅ Added {len(df_patch_all)} missing rows.")
+else:
+    df_combined = df_all
 
-        # --- Save to all formats ---
-        df_combined.to_csv(f"{DB_PATH}.csv", index=False)
-        df_combined.to_parquet(f"{DB_PATH}.parquet", index=False)
-        con = duckdb.connect(f"{DB_PATH}.duckdb")
-        con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_combined")
-        con.close()
-
-        log_lines.append(f"✅ Filled and updated {len(df_missing)} missing records.")
-    else:
-        log_lines.append("⚠️ No data retrieved to fill missing timestamps.")
+# --- Save final updated database ---
+df_combined.to_csv(f"{DB_PATH}.csv", index=False)
+df_combined.to_parquet(f"{DB_PATH}.parquet", index=False)
+con = duckdb.connect(f"{DB_PATH}.duckdb")
+con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_combined")
+con.close()
 
 # --- Save report ---
-report_name = f"{datetime.now().date()}_missing_report.txt"
-with open(os.path.join(REPORTS_DIR, report_name), "w") as f:
-    f.write("\n".join(log_lines))
+report_file = os.path.join(REPORTS_DIR, f"missing_report_{datetime.utcnow().date()}.txt")
+with open(report_file, "w") as f:
+    f.write("\n".join(report_lines))
 
-print("\n".join(log_lines))
+print("\n".join(report_lines))
+
 
