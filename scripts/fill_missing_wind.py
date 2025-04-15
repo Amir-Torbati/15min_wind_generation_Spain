@@ -1,6 +1,6 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import os
 import duckdb
 from zoneinfo import ZoneInfo
@@ -10,7 +10,7 @@ from dateutil.rrule import rrule, DAILY
 DB_PATH = "database/full_wind_data"
 REPORT_PATH = "reports/missing_report.md"
 QUARTER_FREQ = "15min"
-API_TOKEN = "YOUR_API_TOKEN_HERE"  # Replace in your secrets
+API_TOKEN = "YOUR_API_TOKEN_HERE"  # Replace with your actual token or GitHub secret
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
     "Accept": "application/json",
@@ -23,23 +23,23 @@ os.makedirs("database", exist_ok=True)
 os.makedirs("reports", exist_ok=True)
 
 if os.path.exists(f"{DB_PATH}.csv"):
-    df_db = pd.read_csv(f"{DB_PATH}.csv", parse_dates=["datetime", "datetime_utc"])
+    df_db = pd.read_csv(f"{DB_PATH}.csv", parse_dates=["datetime"])
 else:
     df_db = pd.DataFrame(columns=["value", "datetime", "datetime_utc", "tz_time", "geo_id", "geo_name"])
 
-# --- Determine missing UTC timestamps ---
-start = df_db["datetime_utc"].min()
-end = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-
-if pd.isna(start):
+# --- Determine missing LOCAL timestamps ---
+if df_db.empty:
     print("⚠️ Database is empty. Exiting.")
     exit()
 
-expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="UTC")
-existing = pd.to_datetime(df_db["datetime_utc"], utc=True)
-missing = expected.difference(existing)
+start = df_db["datetime"].min()
+end = datetime.now(tz=ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
 
-if missing.empty:
+expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
+existing = pd.to_datetime(df_db["datetime"]).dt.tz_localize(None)
+missing = [ts for ts in expected if ts.replace(tzinfo=None) not in existing]
+
+if not missing:
     print("✅ No missing timestamps.")
     with open(REPORT_PATH, "w") as f:
         f.write("# 📊 Wind Data Missing Report\n\n✅ All data is complete.\n")
@@ -52,12 +52,12 @@ all_new = []
 failed_days = []
 
 for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
-    day_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+    day_start = datetime.combine(day, datetime.min.time(), tzinfo=ZoneInfo("Europe/Madrid"))
     day_end = day_start + timedelta(days=1)
 
     params = {
-        "start_date": day_start.isoformat(),
-        "end_date": day_end.isoformat(),
+        "start_date": day_start.astimezone(ZoneInfo("UTC")).isoformat(),
+        "end_date": day_end.astimezone(ZoneInfo("UTC")).isoformat(),
         "time_trunc": "quarter-hour"
     }
 
@@ -105,6 +105,8 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
+
+
 
 
 
