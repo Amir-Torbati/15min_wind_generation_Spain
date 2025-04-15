@@ -40,7 +40,7 @@ expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Mad
 existing = df_db["datetime"]
 missing = expected.difference(existing)
 
-if not missing.any():
+if missing.empty:
     print("✅ No missing timestamps.")
     with open(REPORT_PATH, "w") as f:
         f.write("# 📊 Wind Data Missing Report\n\n✅ All data is complete.\n")
@@ -48,7 +48,6 @@ if not missing.any():
 
 print(f"🔍 Found {len(missing)} missing timestamps. Attempting to fetch...")
 
-# --- Fetch in daily chunks ---
 missing_days = sorted(set(ts.date() for ts in missing))
 all_new = []
 failed_days = []
@@ -107,5 +106,6 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
+
 
 
