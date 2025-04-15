@@ -108,3 +108,4 @@ with open(REPORT_PATH, "w") as f:
 
 print("📄 Report generated at:", REPORT_PATH)
 
+
