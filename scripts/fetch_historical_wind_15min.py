@@ -18,7 +18,14 @@ HEADERS = {
 # --- TIME RANGE CONFIG ---
 TZ = ZoneInfo("Europe/Madrid")
 start_date_local = datetime(2023, 1, 1, 0, 0, tzinfo=TZ)
-end_date_local = datetime.now(TZ).replace(minute=0, second=0, microsecond=0)
+
+# 🕒 Round end time up to the next 15-minute block
+now = datetime.now(TZ)
+minute = (now.minute // 15 + 1) * 15
+if minute == 60:
+    end_date_local = now.replace(hour=now.hour + 1, minute=0, second=0, microsecond=0)
+else:
+    end_date_local = now.replace(minute=minute, second=0, microsecond=0)
 
 # --- OUTPUT DIRECTORIES ---
 os.makedirs("database", exist_ok=True)
@@ -51,7 +58,6 @@ while current_local < end_date_local:
         df = pd.DataFrame(values)
 
         if not df.empty and "datetime" in df.columns:
-            # ✅ FIX: Ensure timezone-aware parsing
             df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
             all_data.append(df)
 
@@ -103,6 +109,5 @@ print(f"\n✅ Done! Saved {len(df_tidy)} rows to:")
 print(f"   • {csv_path}")
 print(f"   • {parquet_path}")
 print(f"   • {duckdb_path} (table: wind_tidy)")
-
 
 
