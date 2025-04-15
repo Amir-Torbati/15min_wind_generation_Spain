@@ -10,7 +10,7 @@ from dateutil.rrule import rrule, DAILY
 DB_PATH = "database/full_wind_data"
 REPORT_PATH = "reports/missing_report.md"
 QUARTER_FREQ = "15min"
-API_TOKEN = "YOUR_API_TOKEN_HERE"  # Replace with your actual token
+API_TOKEN = "YOUR_API_TOKEN_HERE"  # Replace with your actual token or GitHub secret
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
     "Accept": "application/json",
@@ -18,9 +18,7 @@ HEADERS = {
     "x-api-key": API_TOKEN,
 }
 
-TZ = ZoneInfo("Europe/Madrid")
-
-# --- Load database ---
+# --- Load DB ---
 os.makedirs("database", exist_ok=True)
 os.makedirs("reports", exist_ok=True)
 
@@ -29,24 +27,30 @@ if os.path.exists(f"{DB_PATH}.csv"):
 else:
     df_db = pd.DataFrame(columns=["value", "datetime", "geo_id", "geo_name", "date_local", "time_local"])
 
-# --- Ensure tidy local datetime ---
-df_db["datetime"] = pd.to_datetime(df_db["datetime"], utc=True).dt.tz_convert(TZ)
+# --- Ensure tidy datetime format ---
+df_db["datetime"] = pd.to_datetime(df_db["datetime"])
+if df_db["datetime"].dt.tz is None:
+    df_db["datetime"] = df_db["datetime"].dt.tz_localize("Europe/Madrid")
+else:
+    df_db["datetime"] = df_db["datetime"].dt.tz_convert("Europe/Madrid")
+
+# Add tidy columns
 df_db["date_local"] = df_db["datetime"].dt.date
 df_db["time_local"] = df_db["datetime"].dt.time
 
-# --- Detect missing timestamps ---
+# --- Determine missing LOCAL timestamps ---
 if df_db.empty:
     print("⚠️ Database is empty. Exiting.")
     exit()
 
 start = df_db["datetime"].min()
-end = datetime.now(tz=TZ).replace(second=0, microsecond=0)
+end = datetime.now(tz=ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
 
-expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
+expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
 existing = df_db["datetime"]
 missing = expected.difference(existing)
 
-if missing.empty:
+if not missing.any():
     print("✅ No missing timestamps.")
     with open(REPORT_PATH, "w") as f:
         f.write("# 📊 Wind Data Missing Report\n\n✅ All data is complete.\n")
@@ -59,7 +63,7 @@ all_new = []
 failed_days = []
 
 for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
-    day_start = datetime.combine(day, datetime.min.time(), tzinfo=TZ)
+    day_start = datetime.combine(day, datetime.min.time(), tzinfo=ZoneInfo("Europe/Madrid"))
     day_end = day_start + timedelta(days=1)
 
     params = {
@@ -69,25 +73,24 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
     }
 
     try:
-        print(f"📡 Fetching: {day}")
         res = requests.get(BASE_URL, headers=HEADERS, params=params)
         if res.status_code == 403:
-            print(f"⛔ Token error on {day}")
-            failed_days.append(day)
+            print(f"⛔ Forbidden – Token expired on {day.date()}")
+            failed_days.append(day.date())
             continue
         res.raise_for_status()
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
-        df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ)
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert("Europe/Madrid")
         df["date_local"] = df["datetime"].dt.date
         df["time_local"] = df["datetime"].dt.time
         df = df[["value", "datetime", "geo_id", "geo_name", "date_local", "time_local"]]
         all_new.append(df)
     except Exception as e:
-        print(f"  ❌ Error on {day}: {e}")
-        failed_days.append(day)
+        print(f"  ❌ Error on {day.date()}: {e}")
+        failed_days.append(day.date())
 
-# --- Merge and Save ---
+# --- Merge + Save ---
 if all_new:
     df_new = pd.concat(all_new)
     df_combined = pd.concat([df_db, df_new])
@@ -104,7 +107,7 @@ if all_new:
 else:
     print("⚠️ No new data fetched.")
 
-# --- Save Markdown Report ---
+# --- Write Markdown Report ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Weekly Wind Data Missing Report\n\n")
     if failed_days:
@@ -116,3 +119,4 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
+
