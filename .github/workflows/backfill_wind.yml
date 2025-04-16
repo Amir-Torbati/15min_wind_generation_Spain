@@ -1,0 +1,33 @@
+# .github/workflows/backfill_wind.yml
+
+name: Backfill Wind Data (Manual)
+
+on:
+  workflow_dispatch:  # Manual trigger from GitHub UI
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v3
+
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install pandas requests python-dateutil pyarrow duckdb
+
+    - name: ⚡ Run backfill script
+      run: python scripts/backfill_wind_15min.py
+
+    - name: 🗂️ Upload wind data
+      uses: actions/upload-artifact@v4
+      with:
+        name: wind-backfill
+        path: database/
