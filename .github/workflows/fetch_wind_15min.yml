@@ -1,4 +1,4 @@
-name: Collect Wind Generation Data Every 15 Minutes (Split by Day)
+name: Collect & Append Wind Generation Data (15-Min)
 
 permissions:
   contents: write
@@ -6,14 +6,14 @@ permissions:
 on:
   schedule:
     - cron: '*/15 * * * *'  # Every 15 minutes UTC
-  workflow_dispatch:
+  workflow_dispatch:        # Allow manual trigger too
 
 jobs:
-  collect-wind-15min:
+  collect-wind:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repo
+      - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
       - name: 🐍 Set up Python
@@ -24,19 +24,20 @@ jobs:
       - name: 📦 Install dependencies
         run: pip install requests pandas duckdb pyarrow
 
-      - name: 🌬️ Update today's file with all missing 15-min wind data
+      - name: 🌬️ Collect raw 15-min wind data for today
         run: python scripts/collect_wind_15min.py
 
-      - name: 🧩 Append new data to main wind database
+      - name: 🧩 Append tidy version to full wind database
         run: python scripts/append_to_wind_database.py
 
-      - name: 📤 Commit and push updated wind data
+      - name: 📤 Commit and push updated data
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           git add data/ database/
-          git commit -m "🌬️ Update daily + database wind data: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git commit -m "🌬️ Auto-update wind data: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
+
 
