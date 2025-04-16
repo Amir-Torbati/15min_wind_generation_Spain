@@ -20,37 +20,35 @@ if not os.path.exists(DB_PATH):
 
 df = pd.read_csv(DB_PATH)
 
-# --- Validate columns ---
+# --- Validate required columns ---
 required_cols = {"date", "time", "offset", "value"}
 if not required_cols.issubset(df.columns):
     print("⚠️ Missing required columns in tidy data.")
     exit()
 
-# --- Build full timezone-aware datetime column ---
-# Combine date + time + offset into a single datetime string, e.g. "2023-01-01 00:00+01:00"
+# --- Rebuild full timezone-aware datetime column ---
 df["datetime_str"] = df["date"] + " " + df["time"] + df["offset"]
-df["datetime"] = pd.to_datetime(df["datetime_str"])  # auto-parses with offset
+df["datetime"] = pd.to_datetime(df["datetime_str"], utc=True).dt.tz_convert(TZ)
 
-# --- Build expected 15-min time series ---
+# --- Build expected time range ---
 start = df["datetime"].min()
-end = datetime.now(ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
+end = datetime.now(TZ).replace(second=0, microsecond=0)
 expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
 
-# --- Compare and find missing timestamps ---
-actual = df["datetime"].sort_values().drop_duplicates()
+# --- Find missing timestamps ---
+actual = df["datetime"].drop_duplicates().sort_values()
 missing = expected.difference(actual)
 
-# --- Group missing by date
+# --- Group by date ---
 missing_by_day = defaultdict(list)
 for ts in missing:
     date_str = ts.strftime("%Y-%m-%d")
     time_str = ts.strftime("%H:%M")
     missing_by_day[date_str].append(time_str)
 
-# --- Generate Markdown Report ---
+# --- Generate markdown report ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Wind Data Missing Report\n\n")
-
     if not missing_by_day:
         f.write("✅ All 15-minute intervals are present.\n")
         print("✅ No missing timestamps.")
@@ -63,4 +61,5 @@ with open(REPORT_PATH, "w") as f:
         print(f"🔍 Found missing data on {len(missing_by_day)} day(s).")
 
 print("📄 Report saved to:", REPORT_PATH)
+
 
