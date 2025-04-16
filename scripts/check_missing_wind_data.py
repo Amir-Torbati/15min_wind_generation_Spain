@@ -10,6 +10,7 @@ from dateutil.rrule import rrule, DAILY
 DB_PATH = "database/full_wind_data_tidy"
 REPORT_PATH = "reports/missing_report.md"
 QUARTER_FREQ = "15min"
+TZ = ZoneInfo("Europe/Madrid")
 API_TOKEN = "478a759c0ef1ce824a835ddd699195ff0f66a9b5ae3b477e88a579c6b7ec47c5"
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
@@ -22,19 +23,21 @@ HEADERS = {
 os.makedirs("database", exist_ok=True)
 os.makedirs("reports", exist_ok=True)
 
-# --- Load existing tidy DB ---
-if os.path.exists(f"{DB_PATH}.csv"):
-    df_db = pd.read_csv(f"{DB_PATH}.csv")
-    df_db["datetime"] = pd.to_datetime(df_db["date_utc"] + " " + df_db["time_utc"], utc=True)
-    df_db["datetime"] = df_db["datetime"].dt.tz_convert("Europe/Madrid")
-else:
+# --- Load tidy DB ---
+if not os.path.exists(f"{DB_PATH}.csv"):
     print("⚠️ Tidy database not found.")
     exit()
 
-# --- Create expected 15-minute intervals ---
+df_db = pd.read_csv(f"{DB_PATH}.csv")
+df_db["datetime"] = pd.to_datetime(df_db["date_utc"] + " " + df_db["time_utc"], utc=True)
+df_db["datetime"] = df_db["datetime"].dt.tz_convert(TZ)
+
+# --- Build expected timestamp range ---
 start = df_db["datetime"].min()
-end = datetime.now(ZoneInfo("Europe/Madrid")).replace(second=0, microsecond=0)
-expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz="Europe/Madrid")
+end = datetime.now(TZ).replace(second=0, microsecond=0)
+start = start.astimezone(TZ)
+end = end.astimezone(TZ)
+expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
 
 # --- Find missing timestamps ---
 existing = df_db["datetime"]
@@ -48,13 +51,13 @@ if missing.empty:
 
 print(f"🔍 Found {len(missing)} missing timestamps. Attempting to fetch...")
 
-# --- Fetch missing days ---
+# --- Group by day ---
 missing_days = sorted(set(ts.date() for ts in missing))
 all_new = []
 failed_days = []
 
 for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
-    day_start = datetime.combine(day, datetime.min.time(), tzinfo=ZoneInfo("Europe/Madrid"))
+    day_start = datetime.combine(day, datetime.min.time(), tzinfo=TZ)
     day_end = day_start + timedelta(days=1)
 
     params = {
@@ -73,7 +76,7 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
         values = res.json()["indicator"]["values"]
         df = pd.DataFrame(values)
         if not df.empty:
-            df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert("Europe/Madrid")
+            df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ)
             df["date_local"] = df["datetime"].dt.date
             df["time_local"] = df["datetime"].dt.strftime("%H:%M")
             df["date_utc"] = df["datetime"].dt.tz_convert("UTC").dt.date
@@ -85,7 +88,7 @@ for day in rrule(freq=DAILY, dtstart=missing_days[0], until=missing_days[-1]):
         print(f"  ❌ Error on {day.date()}: {e}")
         failed_days.append(day.date())
 
-# --- Merge and Save Updated DB ---
+# --- Merge + save ---
 if all_new:
     df_new = pd.concat(all_new)
     df_full = pd.concat([df_db, df_new]).drop_duplicates(
@@ -96,14 +99,14 @@ if all_new:
         df_full.drop(columns="row", inplace=True)
     df_full.insert(0, "row", df_full.index + 1)
 
-    # Fix types for Parquet
+    # Parquet-safe types
     df_full["date_local"] = pd.to_datetime(df_full["date_local"]).dt.date
     df_full["date_utc"] = pd.to_datetime(df_full["date_utc"]).dt.date
     df_full["time_local"] = df_full["time_local"].astype(str)
     df_full["time_utc"] = df_full["time_utc"].astype(str)
     df_full["value_mw"] = pd.to_numeric(df_full["value_mw"], errors="coerce")
 
-    # Save to all formats
+    # Save all formats
     df_full.to_csv(f"{DB_PATH}.csv", index=False)
     df_full.to_parquet(f"{DB_PATH}.parquet", index=False)
 
@@ -115,7 +118,7 @@ if all_new:
 else:
     print("⚠️ No new data fetched.")
 
-# --- Generate Markdown Report ---
+# --- Report output ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Weekly Wind Data Missing Report\n\n")
     if failed_days:
@@ -127,6 +130,7 @@ with open(REPORT_PATH, "w") as f:
         f.write("✅ All requested data was successfully filled.\n")
 
 print("📄 Report generated at:", REPORT_PATH)
+
 
 
 
