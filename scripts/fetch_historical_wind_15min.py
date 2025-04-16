@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 import duckdb
 
 # --- CONFIG ---
-API_TOKEN = "YOUR_TOKEN_HERE"
+API_TOKEN = "YOUR_TOKEN_HERE"  # Replace this!
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
     "Accept": "application/json",
@@ -53,13 +53,12 @@ while current_local < end_date_local:
             df["datetime_utc"] = pd.to_datetime(df["datetime"], utc=True)
             df["datetime_local"] = df["datetime_utc"].dt.tz_convert(TZ_LOCAL)
 
-            df["date_local"] = df["datetime_local"].dt.date
-            df["time_local"] = df["datetime_local"].dt.strftime("%H:%M")
-            df["utc_offset"] = df["datetime_local"].dt.strftime("%z").str[:3] + ":" + df["datetime_local"].dt.strftime("%z").str[3:]
-
+            df["date"] = df["datetime_local"].dt.date
+            df["time"] = df["datetime_local"].dt.strftime("%H:%M")
+            df["tz_offset"] = df["datetime_local"].dt.strftime("%z").str.replace(r'(\d{2})(\d{2})', r'\1:\2', regex=True)
             df["value_mw"] = df["value"]
-            df = df[["date_local", "time_local", "utc_offset", "value_mw"]]
 
+            df = df[["date", "time", "tz_offset", "value_mw"]]
             all_data.append(df)
 
     except Exception as e:
@@ -69,29 +68,18 @@ while current_local < end_date_local:
 
 # --- Save ---
 if all_data:
-    print("📦 Concatenating and saving full historical data...")
-    df_all = pd.concat(all_data).drop_duplicates().sort_values(["date_local", "time_local"]).reset_index(drop=True)
+    df_all = pd.concat(all_data).drop_duplicates().sort_values(["date", "time"]).reset_index(drop=True)
+    print(f"📦 Total rows collected: {len(df_all)}")
 
-    # ✅ Create folder even if deleted
     os.makedirs("database", exist_ok=True)
 
-    csv_path = "database/full_wind_data_tidy.csv"
-    parquet_path = "database/full_wind_data_tidy.parquet"
-    duckdb_path = "database/full_wind_data_tidy.duckdb"
+    df_all.to_csv("database/full_wind_data_tidy.csv", index=False)
+    df_all.to_parquet("database/full_wind_data_tidy.parquet", index=False)
 
-    df_all.to_csv(csv_path, index=False)
-    df_all.to_parquet(parquet_path, index=False)
-
-    con = duckdb.connect(duckdb_path)
+    con = duckdb.connect("database/full_wind_data_tidy.duckdb")
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_all")
     con.close()
 
-    print(f"✅ Done: {len(df_all)} rows saved to CSV, Parquet & DuckDB.")
+    print("✅ Data saved in CSV, Parquet and DuckDB formats.")
 else:
-    print("⚠️ No data was fetched.")
-
-
-
-
-
-
+    print("⚠️ No data was fetched. Check your API token or the API response.")
