@@ -55,7 +55,7 @@ while current_local < end_date_local:
             df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ)
             df["value"] = pd.to_numeric(df["value"], errors="coerce")
 
-            # Fill 15-min grid with NaNs where missing
+            # Reindex to ensure all 15-min slots are present
             df = df.set_index("datetime").asfreq("15min").reset_index()
 
             all_data.append(df[["datetime", "value"]])
@@ -74,11 +74,13 @@ if all_data:
 
     df_all["date"] = df_all["datetime"].dt.date.astype(str)
     df_all["time"] = df_all["datetime"].dt.strftime("%H:%M")
-    df_all["offset"] = df_all["datetime"].dt.strftime("%z").str.slice(0, 3) + ":" + df_all["datetime"].dt.strftime(3, 5)
+
+    # ✅ FIXED OFFSET FORMAT
+    df_all["offset"] = df_all["datetime"].dt.strftime("%z").str.slice(0, 3) + ":" + df_all["datetime"].dt.strftime("%z").str.slice(3, 5)
 
     df_clean = df_all[["date", "time", "offset", "value"]]
 
-    # --- SAVE FILES ---
+    # --- SAVE ---
     df_clean.to_csv(f"{output_dir}/wind_local.csv", index=False)
     df_clean.to_parquet(f"{output_dir}/wind_local.parquet", index=False)
 
