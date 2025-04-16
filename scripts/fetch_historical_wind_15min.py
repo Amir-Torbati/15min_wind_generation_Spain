@@ -1,6 +1,6 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
 from dateutil.relativedelta import relativedelta
@@ -73,7 +73,6 @@ while current_local < end_date_local:
 if all_data:
     print("📦 Concatenating and saving full historical data...")
     df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
-    df_all.insert(0, "row", df_all.index + 1)
 
     os.makedirs("database", exist_ok=True)
 
@@ -91,3 +90,4 @@ if all_data:
     print(f"✅ Done: {len(df_all)} rows saved to CSV, Parquet & DuckDB.")
 else:
     print("⚠️ No data was fetched.")
+
