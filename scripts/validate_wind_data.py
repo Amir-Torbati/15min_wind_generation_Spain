@@ -1,6 +1,6 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
 from dateutil.relativedelta import relativedelta
@@ -56,18 +56,24 @@ while current_local < end_date_local:
     current_local = period_end_local
 
 # --- Save final dataset ---
-os.makedirs("main_database", exist_ok=True)
+output_dir = "validation"
+os.makedirs(output_dir, exist_ok=True)
 
 if all_data:
     df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
-    df_all.to_csv("main_database/wind_archive.csv", index=False)
-    df_all.to_parquet("main_database/wind_archive.parquet", index=False)
+
+    csv_path = os.path.join(output_dir, "full_wind_data.csv")
+    parquet_path = os.path.join(output_dir, "full_wind_data.parquet")
+    duckdb_path = os.path.join(output_dir, "full_wind_data.duckdb")
+
+    df_all.to_csv(csv_path, index=False)
+    df_all.to_parquet(parquet_path, index=False)
 
     import duckdb
-    con = duckdb.connect("main_database/wind_archive.duckdb")
+    con = duckdb.connect(duckdb_path)
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_all")
     con.close()
 
-    print(f"✅ Done! Saved {len(df_all)} rows to 'main_database/' folder.")
+    print(f"✅ Done! Saved {len(df_all)} rows to '{output_dir}/'")
 else:
     print("⚠️ No data was fetched.")
