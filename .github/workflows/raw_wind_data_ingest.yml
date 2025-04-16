@@ -1,38 +1,32 @@
-name: collect-wind-archive
+name: 🌬️ Wind Archive Collector
 
 on:
-  workflow_dispatch:  # Manual trigger
-  schedule:
-    - cron: '0 1 * * *'  # Runs daily at 01:00 UTC
+  workflow_dispatch:
 
 jobs:
-  fetch-and-store:
+  collect-wind-data:
     runs-on: ubuntu-latest
+    name: Collect wind data from 2023 (archive)
 
     steps:
-      - name: Checkout repository
+      - name: 📦 Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: 📥 Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests python-dateutil duckdb pyarrow
+          pip install -r requirements.txt
 
-      - name: Run data collection script
-        run: |
-          mkdir -p main_database
-          python validate_wind_data.py
-          mv main_database/full_wind_data.csv main_database/wind_archive.csv
-          mv main_database/full_wind_data.parquet main_database/wind_archive.parquet
-          mv main_database/full_wind_data.duckdb main_database/wind_archive.duckdb
+      - name: ▶️ Run wind data archive script
+        run: python validate_wind_data.py
 
-      - name: Upload archive results
-        uses: actions/upload-artifact@v3
+      - name: 📤 Upload archive results
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: wind-archive-data
           path: |
