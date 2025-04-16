@@ -36,10 +36,10 @@ df_tidy = df[[
     "date_local", "time_local", "date_utc", "time_utc", "value_mw"
 ]].sort_values(["date_utc", "time_utc"]).reset_index(drop=True)
 
-# --- Load full database (if exists) ---
+# --- Load full tidy database (if exists) ---
 df_db = pd.read_csv(full_csv) if os.path.exists(full_csv) else pd.DataFrame(columns=df_tidy.columns)
 
-# --- Compare using date + time (not value) ---
+# --- Compare on date + time only (to avoid float issues) ---
 merge_keys = ["date_utc", "time_utc"]
 df_to_add = df_tidy[~df_tidy[merge_keys].apply(tuple, axis=1).isin(
     df_db[merge_keys].apply(tuple, axis=1)
@@ -49,17 +49,24 @@ if df_to_add.empty:
     print("ℹ️ No new data to append.")
     exit()
 
-# --- Append and sort ---
+# --- Combine and sort full DB ---
 df_full = pd.concat([df_db, df_to_add], ignore_index=True).drop_duplicates(
     subset=["date_utc", "time_utc"]
 ).sort_values(["date_utc", "time_utc"]).reset_index(drop=True)
 
-# --- Add row number safely ---
+# --- Safely add row number ---
 if "row" in df_full.columns:
     df_full.drop(columns="row", inplace=True)
 df_full.insert(0, "row", df_full.index + 1)
 
-# --- Save to all formats ---
+# --- Ensure data types for Parquet ---
+df_full["date_local"] = pd.to_datetime(df_full["date_local"]).dt.date
+df_full["date_utc"] = pd.to_datetime(df_full["date_utc"]).dt.date
+df_full["time_local"] = df_full["time_local"].astype(str)
+df_full["time_utc"] = df_full["time_utc"].astype(str)
+df_full["value_mw"] = pd.to_numeric(df_full["value_mw"], errors="coerce")
+
+# --- Save to CSV, Parquet, and DuckDB ---
 df_full.to_csv(full_csv, index=False)
 df_full.to_parquet(full_parquet, index=False)
 
@@ -67,6 +74,7 @@ con = duckdb.connect(duckdb_file)
 con.execute("CREATE OR REPLACE TABLE wind_tidy AS SELECT * FROM df_full")
 con.close()
 
-print(f"📦 Appended {len(df_to_add)} new rows to database ✅")
+print(f"📦 Appended {len(df_to_add)} new rows to full tidy wind database ✅")
+
 
 
