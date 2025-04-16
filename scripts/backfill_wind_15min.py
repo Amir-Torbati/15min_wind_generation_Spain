@@ -2,7 +2,7 @@
 
 import requests
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
 from dateutil.relativedelta import relativedelta
@@ -73,3 +73,4 @@ if all_data:
     print(f"✅ Done! Saved {len(df_all)} rows to 'database/' folder.")
 else:
     print("⚠️ No data was fetched.")
+
