@@ -28,9 +28,15 @@ if not required_cols.issubset(df.columns):
 
 # --- Parse datetime with offset and convert to Europe/Madrid tz ---
 df["datetime_str"] = df["date"] + " " + df["time"] + df["offset"]
-df["datetime"] = pd.to_datetime(df["datetime_str"], utc=True).dt.tz_convert(TZ)
+df["datetime"] = pd.to_datetime(df["datetime_str"], utc=True)
 
-# Round to minute-level precision (strip microseconds/nanoseconds)
+# Handle DST ambiguity (e.g. 2023-10-29 02:00 appears twice)
+df["datetime"] = df["datetime"].dt.tz_convert(TZ, ambiguous="NaT")
+
+# Drop rows with ambiguous timestamps that can't be resolved
+df = df.dropna(subset=["datetime"])
+
+# Round to minute precision
 df["datetime"] = df["datetime"].dt.floor("min")
 
 # --- Build expected datetime range ---
@@ -42,7 +48,7 @@ expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
 actual = df["datetime"].drop_duplicates().sort_values()
 missing = expected.difference(actual)
 
-# --- Group by date
+# --- Group by date ---
 missing_by_day = defaultdict(list)
 for ts in missing:
     date_str = ts.strftime("%Y-%m-%d")
@@ -65,6 +71,3 @@ with open(REPORT_PATH, "w") as f:
         print(f"🔍 Found missing data on {len(missing_by_day)} day(s).")
 
 print("📄 Report saved to:", REPORT_PATH)
-
-
-
