@@ -1,4 +1,4 @@
-nname: 📊 Check Missing Wind Data (Report Only)
+name: 📊 Check Missing Wind Data (Report Only)
 
 permissions:
   contents: write
@@ -16,28 +16,24 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python
+      - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: 📦 Install dependencies
+      - name: 📦 Install Python dependencies
         run: |
           pip install pandas python-dateutil
 
-      - name: 📊 Run missing timestamp report generator
+      - name: 🧪 Run missing timestamp checker
         run: python scripts/check_missing_only.py
 
-      - name: 📤 Commit updated report
+      - name: 📝 Commit missing report (if updated)
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          
+
           git add reports/missing_report.md
-          git commit -m "📊 Weekly missing data report" || echo "No changes to commit"
+          git diff --cached --quiet || git commit -m "📊 Weekly missing data report"
           git pull --rebase --autostash
           git push
-
-
-
-
