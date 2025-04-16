@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 import duckdb
 
 # --- CONFIG ---
-API_TOKEN = "YOUR_ESIOS_API_TOKEN"  # ← Replace with your actual token
-BASE_URL = "https://api.esios.ree.es/indicators/540"  # Wind generation
+API_TOKEN = "YOUR_ESIOS_API_TOKEN"  # 🔐 Replace with your actual token
+BASE_URL = "https://api.esios.ree.es/indicators/540"  # Wind generation (Peninsular)
 HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
@@ -21,7 +21,8 @@ start_date_local = datetime(2023, 1, 1, 0, 0, tzinfo=TZ)
 end_date_local = datetime.now(TZ).replace(minute=0, second=0, microsecond=0)
 
 # --- OUTPUT DIR ---
-os.makedirs("database", exist_ok=True)
+output_dir = "main database"
+os.makedirs(output_dir, exist_ok=True)
 
 # --- FETCH LOOP ---
 all_data = []
@@ -69,17 +70,13 @@ if all_data:
     df_clean = df_all[["date", "time", "offset", "value"]]
 
     # --- SAVE ---
-    df_clean.to_csv("database/wind_local.csv", index=False)
-    df_clean.to_parquet("database/wind_local.parquet", index=False)
+    df_clean.to_csv(f"{output_dir}/wind_local.csv", index=False)
+    df_clean.to_parquet(f"{output_dir}/wind_local.parquet", index=False)
 
-    con = duckdb.connect("database/wind_local.duckdb")
+    con = duckdb.connect(f"{output_dir}/wind_local.duckdb")
     con.execute("CREATE OR REPLACE TABLE wind_local AS SELECT * FROM df_clean")
     con.close()
 
-    print(f"✅ Saved {len(df_clean)} rows to database/")
+    print(f"✅ Saved {len(df_clean)} rows to '{output_dir}/'")
 else:
     print("⚠️ No data was fetched.")
-
-
-
-
