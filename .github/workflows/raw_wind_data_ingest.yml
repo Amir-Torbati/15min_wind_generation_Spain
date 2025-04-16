@@ -1,37 +1,41 @@
-name: Wind Data Fetcher
+name: collect-wind-archive
 
 on:
   workflow_dispatch:  # Manual trigger
   schedule:
-    - cron: '0 3 * * *'  # Runs daily at 03:00 UTC
+    - cron: '0 1 * * *'  # Runs daily at 01:00 UTC
 
 jobs:
   fetch-and-store:
     runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests python-dateutil pyarrow duckdb
+          pip install pandas requests python-dateutil duckdb pyarrow
 
-      - name: 📊 Run wind data collection
-        run: python scripts/validate_wind_data.py  # Make sure this path is correct
+      - name: Run data collection script
+        run: |
+          mkdir -p main_database
+          python validate_wind_data.py
+          mv main_database/full_wind_data.csv main_database/wind_archive.csv
+          mv main_database/full_wind_data.parquet main_database/wind_archive.parquet
+          mv main_database/full_wind_data.duckdb main_database/wind_archive.duckdb
 
-      - name: 🧾 Upload raw dataset
-        uses: actions/upload-artifact@v4
+      - name: Upload archive results
+        uses: actions/upload-artifact@v3
         with:
-          name: wind-raw-data
+          name: wind-archive-data
           path: |
-            database/full_wind_data.csv
-            database/full_wind_data.parquet
-            database/full_wind_data.duckdb
-
+            main_database/wind_archive.csv
+            main_database/wind_archive.parquet
+            main_database/wind_archive.duckdb
