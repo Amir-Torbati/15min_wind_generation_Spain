@@ -26,20 +26,17 @@ if not required_cols.issubset(df.columns):
     print("⚠️ Missing required columns in tidy data.")
     exit()
 
-# --- Parse datetime with offset and convert to Europe/Madrid tz ---
+# --- Combine and convert to datetime ---
 df["datetime_str"] = df["date"] + " " + df["time"] + df["offset"]
 df["datetime"] = pd.to_datetime(df["datetime_str"], utc=True)
 
-# Handle DST ambiguity (e.g. 2023-10-29 02:00 appears twice)
-df["datetime"] = df["datetime"].dt.tz_convert(TZ, ambiguous="NaT")
+# Convert to Europe/Madrid time zone — DST handled properly from UTC
+df["datetime"] = df["datetime"].dt.tz_convert(TZ)
 
-# Drop rows with ambiguous timestamps that can't be resolved
-df = df.dropna(subset=["datetime"])
-
-# Round to minute precision
+# Floor to the minute
 df["datetime"] = df["datetime"].dt.floor("min")
 
-# --- Build expected datetime range ---
+# --- Expected timestamps ---
 start = df["datetime"].min()
 end = datetime.now(TZ).replace(second=0, microsecond=0)
 expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
@@ -48,14 +45,14 @@ expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
 actual = df["datetime"].drop_duplicates().sort_values()
 missing = expected.difference(actual)
 
-# --- Group by date ---
+# --- Group missing timestamps by date ---
 missing_by_day = defaultdict(list)
 for ts in missing:
     date_str = ts.strftime("%Y-%m-%d")
     time_str = ts.strftime("%H:%M")
     missing_by_day[date_str].append(time_str)
 
-# --- Generate Markdown Report ---
+# --- Generate Markdown report ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Wind Data Missing Report\n\n")
 
