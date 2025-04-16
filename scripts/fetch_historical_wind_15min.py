@@ -16,7 +16,7 @@ HEADERS = {
 }
 TZ = ZoneInfo("Europe/Madrid")
 
-# --- FULL RANGE ---
+# --- DATE RANGE ---
 start_date_local = datetime(2023, 1, 1, 0, 0, tzinfo=TZ)
 end_date_local = datetime.now(TZ).replace(minute=0, second=0, microsecond=0)
 
@@ -55,11 +55,14 @@ while current_local < end_date_local:
             df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ)
             df["value"] = pd.to_numeric(df["value"], errors="coerce")
 
-            # Reindex to ensure all 15-min slots are present
-            df = df.set_index("datetime").asfreq("15min").reset_index()
+            df["date"] = df["datetime"].dt.date.astype(str)
+            df["time"] = df["datetime"].dt.strftime("%H:%M")
+            df["offset"] = df["datetime"].dt.strftime("%z").str[:3] + ":" + df["datetime"].dt.strftime("%z").str[3:]
 
-            all_data.append(df[["datetime", "value"]])
-            print(f"✅ Got {len(df)} rows (including gaps)")
+            df_clean = df[["date", "time", "offset", "value"]]
+            all_data.append(df_clean)
+
+            print(f"✅ Got {len(df_clean)} rows")
         else:
             print("⚠️ No data for this period.")
 
@@ -70,25 +73,17 @@ while current_local < end_date_local:
 
 # --- CLEAN & SAVE ---
 if all_data:
-    df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
+    df_all = pd.concat(all_data).drop_duplicates(subset=["date", "time", "offset"]).sort_values(["date", "time"])
 
-    df_all["date"] = df_all["datetime"].dt.date.astype(str)
-    df_all["time"] = df_all["datetime"].dt.strftime("%H:%M")
-
-    # ✅ FIXED OFFSET FORMAT
-    df_all["offset"] = df_all["datetime"].dt.strftime("%z").str.slice(0, 3) + ":" + df_all["datetime"].dt.strftime("%z").str.slice(3, 5)
-
-    df_clean = df_all[["date", "time", "offset", "value"]]
-
-    # --- SAVE ---
-    df_clean.to_csv(f"{output_dir}/wind_local.csv", index=False)
-    df_clean.to_parquet(f"{output_dir}/wind_local.parquet", index=False)
+    df_all.to_csv(f"{output_dir}/wind_local.csv", index=False)
+    df_all.to_parquet(f"{output_dir}/wind_local.parquet", index=False)
 
     con = duckdb.connect(f"{output_dir}/wind_local.duckdb")
-    con.execute("CREATE OR REPLACE TABLE wind_local AS SELECT * FROM df_clean")
+    con.execute("CREATE OR REPLACE TABLE wind_local AS SELECT * FROM df_all")
     con.close()
 
-    print(f"✅ Saved {len(df_clean)} rows to '{output_dir}/'")
+    print(f"✅ Saved {len(df_all)} rows to '{output_dir}/'")
     print("📁 Files:", os.listdir(output_dir))
 else:
     print("⚠️ No data was fetched.")
+
