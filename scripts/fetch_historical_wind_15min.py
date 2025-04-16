@@ -1,9 +1,12 @@
+# fetch_historical_wind_15min.py
+
 import requests
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import os
 from dateutil.relativedelta import relativedelta
+import duckdb
 
 # --- CONFIG ---
 API_TOKEN = "478a759c0ef1ce824a835ddd699195ff0f66a9b5ae3b477e88a579c6b7ec47c5"
@@ -47,7 +50,9 @@ while current_local < end_date_local:
         df = pd.DataFrame(values)
 
         if not df.empty and "datetime" in df.columns:
-            df["datetime"] = pd.to_datetime(df["datetime"])
+            df["datetime_utc"] = pd.to_datetime(df["datetime"], utc=True)
+            df["datetime_local"] = df["datetime_utc"].dt.tz_convert(TZ)
+            df = df[["value", "datetime_local", "datetime_utc", "geo_id", "geo_name"]]
             all_data.append(df)
 
     except Exception as e:
@@ -59,11 +64,15 @@ while current_local < end_date_local:
 os.makedirs("database", exist_ok=True)
 
 if all_data:
-    df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
+    df_all = pd.concat(all_data).drop_duplicates(subset=["datetime_utc"]).sort_values("datetime_utc")
+
+    # Save to CSV
     df_all.to_csv("database/full_wind_data.csv", index=False)
+
+    # Save to Parquet
     df_all.to_parquet("database/full_wind_data.parquet", index=False)
 
-    import duckdb
+    # Save to DuckDB
     con = duckdb.connect("database/full_wind_data.duckdb")
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_all")
     con.close()
@@ -71,5 +80,6 @@ if all_data:
     print(f"✅ Done! Saved {len(df_all)} rows to 'database/' folder.")
 else:
     print("⚠️ No data was fetched.")
+
 
 
