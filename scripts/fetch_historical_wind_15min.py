@@ -1,13 +1,13 @@
 import requests
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import os
 from dateutil.relativedelta import relativedelta
 import duckdb
 
 # --- CONFIG ---
-API_TOKEN = "478a759c0ef1ce824a835ddd699195ff0f66a9b5ae3b477e88a579c6b7ec47c5"
+API_TOKEN = "YOUR_API_TOKEN_HERE"
 BASE_URL = "https://api.esios.ree.es/indicators/540"
 HEADERS = {
     "Accept": "application/json",
@@ -15,28 +15,20 @@ HEADERS = {
     "x-api-key": API_TOKEN,
 }
 
-# --- TIME RANGE CONFIG ---
 TZ = ZoneInfo("Europe/Madrid")
-start_date_local = datetime(2023, 1, 1, 0, 0, tzinfo=TZ)
+start_date_local = datetime(2023, 1, 1, tzinfo=TZ)
+end_date_local = datetime.now(TZ).replace(minute=0, second=0, microsecond=0)
 
-# Use actual current time (no rounding)
-now = datetime.now(TZ)
-end_date_local = now.replace(second=0, microsecond=0)
-
-# --- OUTPUT DIRS ---
 os.makedirs("database", exist_ok=True)
 
-# --- FETCH LOOP ---
 all_data = []
+print(f"📡 Fetching 15-min wind data from {start_date_local.date()} to {end_date_local.date()}...")
+
 current_local = start_date_local
-
-print(f"📡 Fetching wind data from {start_date_local} to {end_date_local}...")
-
 while current_local < end_date_local:
     next_month_local = current_local + relativedelta(months=1)
     period_end_local = min(next_month_local, end_date_local)
 
-    # Convert to UTC for API
     current_utc = current_local.astimezone(timezone.utc)
     period_end_utc = period_end_local.astimezone(timezone.utc)
 
@@ -62,45 +54,31 @@ while current_local < end_date_local:
 
     current_local = period_end_local
 
-if not all_data:
-    print("⚠️ No data was fetched.")
-    exit()
+# --- Build tidy dataset ---
+if all_data:
+    df_all = pd.concat(all_data)
+    df_all = df_all.drop_duplicates(subset=["datetime"]).sort_values("datetime")
+    df_all["datetime_local"] = df_all["datetime"].dt.tz_convert(TZ)
 
-# --- CONCAT & CLEAN ---
-df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
+    df_all["date_utc"] = df_all["datetime"].dt.strftime("%Y-%m-%d")
+    df_all["time_utc"] = df_all["datetime"].dt.strftime("%H:%M")
+    df_all["date_local"] = df_all["datetime_local"].dt.strftime("%Y-%m-%d")
+    df_all["time_local"] = df_all["datetime_local"].dt.strftime("%H:%M")
 
-df_all["datetime_utc"] = df_all["datetime"]
-df_all["datetime_local"] = df_all["datetime"].dt.tz_convert("Europe/Madrid")
-df_all["date_local"] = df_all["datetime_local"].dt.date
-df_all["time_local"] = df_all["datetime_local"].dt.strftime("%H:%M")
-df_all["date_utc"] = df_all["datetime_utc"].dt.date
-df_all["time_utc"] = df_all["datetime_utc"].dt.strftime("%H:%M")
-df_all = df_all.rename(columns={"value": "value_mw"})
+    df_tidy = df_all.rename(columns={"value": "value_mw"})
+    df_tidy = df_tidy[["date_local", "time_local", "date_utc", "time_utc", "value_mw", "datetime"]]
+    df_tidy = df_tidy.reset_index(drop=True)
+    df_tidy.insert(0, "row", df_tidy.index + 1)
 
-# --- TIDY FORMAT ---
-df_tidy = df_all[[
-    "date_local", "time_local", "date_utc", "time_utc", "value_mw"
-]].sort_values(["date_utc", "time_utc"]).reset_index(drop=True)
+    # --- Save to database folder ---
+    df_tidy.to_csv("database/full_wind_data_tidy.csv", index=False)
+    df_tidy.to_parquet("database/full_wind_data_tidy.parquet", index=False)
 
-# Safe insert of row number
-if "row" in df_tidy.columns:
-    df_tidy.drop(columns="row", inplace=True)
-df_tidy.insert(0, "row", df_tidy.index + 1)
+    con = duckdb.connect("database/full_wind_data_tidy.duckdb")
+    con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_tidy")
+    con.close()
 
-# --- SAVE OUTPUTS ---
-csv_path = "database/full_wind_data_tidy.csv"
-parquet_path = "database/full_wind_data_tidy.parquet"
-duckdb_path = "database/full_wind_data.duckdb"
-
-df_tidy.to_csv(csv_path, index=False)
-df_tidy.to_parquet(parquet_path, index=False)
-
-con = duckdb.connect(duckdb_path)
-con.execute("CREATE OR REPLACE TABLE wind_tidy AS SELECT * FROM df_tidy")
-con.close()
-
-print(f"\n✅ Done! Saved {len(df_tidy)} rows to:")
-print(f"   • {csv_path}")
-print(f"   • {parquet_path}")
-print(f"   • {duckdb_path} (table: wind_tidy)")
+    print(f"✅ Saved {len(df_tidy)} rows to tidy database.")
+else:
+    print("⚠️ No data fetched.")
 
