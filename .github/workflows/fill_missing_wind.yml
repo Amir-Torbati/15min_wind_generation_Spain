@@ -23,7 +23,7 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          pip install requests pandas duckdb python-dateutil
+          pip install requests pandas duckdb python-dateutil pyarrow
 
       - name: ✨ Fill in any missing 15-min wind data
         run: python scripts/check_missing_wind_data.py
@@ -37,5 +37,6 @@ jobs:
           git commit -m "🧼 Weekly fill: update database and report" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
+
 
 
