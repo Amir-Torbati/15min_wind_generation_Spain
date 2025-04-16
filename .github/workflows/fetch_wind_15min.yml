@@ -22,7 +22,7 @@ jobs:
           python-version: '3.11'
 
       - name: 📦 Install dependencies
-        run: pip install requests pandas duckdb pyarrow
+        run: pip install requests pandas duckdb pyarrow python-dateutil
 
       - name: 🌬️ Collect raw 15-min wind data for today
         run: python scripts/collect_wind_15min.py
@@ -35,9 +35,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
-          git add data/ database/
+          git add data/ "main database/"
           git commit -m "🌬️ Auto-update wind data: $(date -u +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
-
-
