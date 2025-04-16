@@ -1,42 +1,37 @@
-name: raw-wind-data-ingest
+name: Wind Data Fetcher
 
 on:
+  workflow_dispatch:  # Manual trigger
   schedule:
-    - cron: '0 1 * * *'  # Every day at 01:00 UTC
-  workflow_dispatch:
+    - cron: '0 3 * * *'  # Runs daily at 03:00 UTC
 
 jobs:
-  fetch-raw-wind-data:
+  fetch-and-store:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repo
+      - name: ⬇️ Checkout repository
         uses: actions/checkout@v3
 
       - name: 🐍 Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: 📦 Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install pandas requests python-dateutil duckdb pyarrow zoneinfo
+          python -m pip install --upgrade pip
+          pip install pandas requests python-dateutil pyarrow duckdb
 
-      - name: 📡 Run raw wind data fetch
-        run: |
-          python fetch_wind_data.py
+      - name: 📊 Run wind data collection
+        run: python scripts/validate_wind_data.py  # Make sure this path is correct
 
-      - name: ✅ Validate & check raw data
-        run: |
-          python validate_wind_data.py
-
-      - name: 🧾 Upload raw dataset & reports
-        uses: actions/upload-artifact@v3
+      - name: 🧾 Upload raw dataset
+        uses: actions/upload-artifact@v4
         with:
-          name: raw-wind-dataset
+          name: wind-raw-data
           path: |
             database/full_wind_data.csv
             database/full_wind_data.parquet
             database/full_wind_data.duckdb
-            database/raw_data_daily_checks.csv
+
