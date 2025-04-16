@@ -1,12 +1,12 @@
-name: 📊 Check Missing Wind Data (Report Only)
-
-permissions:
-  contents: write
+name: 🔍 Check Missing Wind Data (Weekly)
 
 on:
   schedule:
-    - cron: '0 0 * * 0'  # Every Sunday at 00:00 UTC
-  workflow_dispatch:       # Allow manual trigger from GitHub UI
+    - cron: '0 5 * * 1'  # Every Monday at 05:00 UTC
+  workflow_dispatch:     # Allow manual trigger too
+
+permissions:
+  contents: write
 
 jobs:
   check-missing:
@@ -16,24 +16,23 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
-      - name: 🐍 Set up Python 3.11
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
       - name: 📦 Install Python dependencies
-        run: |
-          pip install pandas python-dateutil
+        run: pip install pandas python-dateutil
 
-      - name: 🧪 Run missing timestamp checker
+      - name: 🧪 Check for missing 15-min intervals
         run: python scripts/check_missing_only.py
 
-      - name: 📝 Commit missing report (if updated)
+      - name: 📤 Commit and push report
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           git add reports/missing_report.md
-          git diff --cached --quiet || git commit -m "📊 Weekly missing data report"
+          git commit -m "📊 Weekly wind data gap report" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
