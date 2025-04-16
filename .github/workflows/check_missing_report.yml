@@ -1,4 +1,4 @@
-name: 🧼 Fill Missing Wind Data (Weekly Check)
+nname: 📊 Check Missing Wind Data (Report Only)
 
 permissions:
   contents: write
@@ -6,10 +6,10 @@ permissions:
 on:
   schedule:
     - cron: '0 0 * * 0'  # Every Sunday at 00:00 UTC
-  workflow_dispatch:
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
 
 jobs:
-  fill-missing-data:
+  check-missing:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,20 +23,21 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          pip install requests pandas duckdb python-dateutil pyarrow
+          pip install pandas python-dateutil
 
-      - name: ✨ Fill in any missing 15-min wind data
-        run: python scripts/check_missing_wind_data.py
+      - name: 📊 Run missing timestamp report generator
+        run: python scripts/check_missing_only.py
 
-      - name: 📤 Commit updated database & report
+      - name: 📤 Commit updated report
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           
-          git add database/ reports/
-          git commit -m "🧼 Weekly fill: update database and report" || echo "No changes to commit"
+          git add reports/missing_report.md
+          git commit -m "📊 Weekly missing data report" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
+
 
 
 
