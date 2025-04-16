@@ -52,10 +52,14 @@ while current_local < end_date_local:
 
         df = pd.DataFrame(values)
         if not df.empty:
-            df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_convert(TZ)
+            df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ)
             df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
+            # Fill 15-min grid with NaNs where missing
+            df = df.set_index("datetime").asfreq("15min").reset_index()
+
             all_data.append(df[["datetime", "value"]])
-            print(f"✅ Got {len(df)} rows")
+            print(f"✅ Got {len(df)} rows (including gaps)")
         else:
             print("⚠️ No data for this period.")
 
@@ -70,10 +74,11 @@ if all_data:
 
     df_all["date"] = df_all["datetime"].dt.date.astype(str)
     df_all["time"] = df_all["datetime"].dt.strftime("%H:%M")
-    df_all["offset"] = df_all["datetime"].dt.strftime("%z").str.slice(0, 3) + ":" + df_all["datetime"].dt.strftime("%z").str.slice(3, 5)
+    df_all["offset"] = df_all["datetime"].dt.strftime("%z").str.slice(0, 3) + ":" + df_all["datetime"].dt.strftime(3, 5)
+
     df_clean = df_all[["date", "time", "offset", "value"]]
 
-    # --- SAVE ---
+    # --- SAVE FILES ---
     df_clean.to_csv(f"{output_dir}/wind_local.csv", index=False)
     df_clean.to_parquet(f"{output_dir}/wind_local.parquet", index=False)
 
@@ -85,4 +90,3 @@ if all_data:
     print("📁 Files:", os.listdir(output_dir))
 else:
     print("⚠️ No data was fetched.")
-
