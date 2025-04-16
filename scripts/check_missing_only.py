@@ -26,11 +26,14 @@ if not required_cols.issubset(df.columns):
     print("⚠️ Missing required columns in tidy data.")
     exit()
 
-# --- Rebuild full timezone-aware datetime column ---
+# --- Parse datetime with offset and convert to Europe/Madrid tz ---
 df["datetime_str"] = df["date"] + " " + df["time"] + df["offset"]
 df["datetime"] = pd.to_datetime(df["datetime_str"], utc=True).dt.tz_convert(TZ)
 
-# --- Build expected time range ---
+# Round to minute-level precision (strip microseconds/nanoseconds)
+df["datetime"] = df["datetime"].dt.floor("min")
+
+# --- Build expected datetime range ---
 start = df["datetime"].min()
 end = datetime.now(TZ).replace(second=0, microsecond=0)
 expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
@@ -39,16 +42,17 @@ expected = pd.date_range(start=start, end=end, freq=QUARTER_FREQ, tz=TZ)
 actual = df["datetime"].drop_duplicates().sort_values()
 missing = expected.difference(actual)
 
-# --- Group by date ---
+# --- Group by date
 missing_by_day = defaultdict(list)
 for ts in missing:
     date_str = ts.strftime("%Y-%m-%d")
     time_str = ts.strftime("%H:%M")
     missing_by_day[date_str].append(time_str)
 
-# --- Generate markdown report ---
+# --- Generate Markdown Report ---
 with open(REPORT_PATH, "w") as f:
     f.write("# 📊 Wind Data Missing Report\n\n")
+
     if not missing_by_day:
         f.write("✅ All 15-minute intervals are present.\n")
         print("✅ No missing timestamps.")
@@ -61,5 +65,6 @@ with open(REPORT_PATH, "w") as f:
         print(f"🔍 Found missing data on {len(missing_by_day)} day(s).")
 
 print("📄 Report saved to:", REPORT_PATH)
+
 
 
