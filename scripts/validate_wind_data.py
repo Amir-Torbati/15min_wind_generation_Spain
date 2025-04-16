@@ -56,18 +56,18 @@ while current_local < end_date_local:
     current_local = period_end_local
 
 # --- Save final dataset ---
-os.makedirs("database", exist_ok=True)
+os.makedirs("main_database", exist_ok=True)
 
 if all_data:
     df_all = pd.concat(all_data).drop_duplicates(subset=["datetime"]).sort_values("datetime")
-    df_all.to_csv("database/full_wind_data.csv", index=False)
-    df_all.to_parquet("database/full_wind_data.parquet", index=False)
+    df_all.to_csv("main_database/wind_archive.csv", index=False)
+    df_all.to_parquet("main_database/wind_archive.parquet", index=False)
 
     import duckdb
-    con = duckdb.connect("database/full_wind_data.duckdb")
+    con = duckdb.connect("main_database/wind_archive.duckdb")
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_all")
     con.close()
 
-    print(f"✅ Done! Saved {len(df_all)} rows to 'database/' folder.")
+    print(f"✅ Done! Saved {len(df_all)} rows to 'main_database/' folder.")
 else:
     print("⚠️ No data was fetched.")
