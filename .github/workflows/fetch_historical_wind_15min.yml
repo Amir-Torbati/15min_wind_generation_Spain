@@ -25,15 +25,12 @@ jobs:
       - name: ⚡ Fetch historical wind (15min) and save to database
         run: python scripts/fetch_historical_wind_15min.py
 
-      - name: 📤 Commit and push database
+      - name: 📤 Commit and push updated wind data
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
-          git add database/
+          git add "main database/"
           git commit -m "🕰️ Add full historical wind 15min data" || echo "No changes to commit"
           git pull --rebase --autostash
           git push
-
-
-
