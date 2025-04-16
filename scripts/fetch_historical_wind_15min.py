@@ -15,31 +15,31 @@ HEADERS = {
     "x-api-key": API_TOKEN,
 }
 
-# --- TIME ZONE ---
-TZ = ZoneInfo("Europe/Madrid")
+# --- TIME ZONES ---
+TZ_LOCAL = ZoneInfo("Europe/Madrid")
 
-# --- DATE RANGE ---
-start_date_local = datetime(2023, 1, 1, 0, 0, tzinfo=TZ)
-end_date_local = datetime.now(TZ).replace(minute=0, second=0, microsecond=0)
+# --- RANGE: Start to Now ---
+start_date_local = datetime(2023, 1, 1, 0, 0, tzinfo=TZ_LOCAL)
+end_date_local = datetime.now(TZ_LOCAL).replace(minute=0, second=0, microsecond=0)
 
-print(f"📡 Fetching 15-min wind data from {start_date_local.date()} to {end_date_local.date()}...")
+print(f"📡 Fetching historical wind data from {start_date_local.date()} to {end_date_local.date()}...")
 
 # --- Output container ---
 all_data = []
 
-# --- Monthly fetch loop ---
+# --- Month-by-month loop ---
 current_local = start_date_local
 while current_local < end_date_local:
     next_month_local = current_local + relativedelta(months=1)
     period_end_local = min(next_month_local, end_date_local)
 
-    current_utc = current_local.astimezone(timezone.utc)
-    period_end_utc = period_end_local.astimezone(timezone.utc)
+    start_utc = current_local.astimezone(timezone.utc).isoformat()
+    end_utc = period_end_local.astimezone(timezone.utc).isoformat()
 
     params = {
-        "start_date": current_utc.isoformat(),
-        "end_date": period_end_utc.isoformat(),
-        "time_trunc": "quarter-hour"
+        "start_date": start_utc,
+        "end_date": end_utc,
+        "time_trunc": "quarter-hour",
     }
 
     try:
@@ -50,12 +50,11 @@ while current_local < end_date_local:
         df = pd.DataFrame(values)
 
         if not df.empty and "datetime" in df.columns:
-            df["datetime_utc"] = pd.to_datetime(df["datetime"], utc=True)
-            df["datetime_local"] = df["datetime_utc"].dt.tz_convert(TZ)
+            df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.tz_convert(TZ_LOCAL)
 
-            df["date"] = df["datetime_local"].dt.date
-            df["time"] = df["datetime_local"].dt.strftime("%H:%M")
-            df["tz_offset"] = df["datetime_local"].dt.strftime("%z").str.replace(r"(\d{2})(\d{2})", r"\1:\2", regex=True)
+            df["date"] = df["datetime"].dt.strftime("%Y-%m-%d")
+            df["time"] = df["datetime"].dt.strftime("%H:%M")
+            df["tz_offset"] = df["datetime"].dt.strftime("%z").str.slice(0, 3) + ":00"
             df["value_mw"] = df["value"]
 
             df = df[["date", "time", "tz_offset", "value_mw"]]
@@ -66,13 +65,13 @@ while current_local < end_date_local:
 
     current_local = period_end_local
 
-# --- Save outputs ---
+# --- Save ---
 os.makedirs("database", exist_ok=True)
 
 if all_data:
-    df_all = pd.concat(all_data).drop_duplicates(subset=["date", "time"]).sort_values(["date", "time"]).reset_index(drop=True)
+    print("📦 Saving tidy dataset...")
+    df_all = pd.concat(all_data).drop_duplicates().sort_values(["date", "time"]).reset_index(drop=True)
 
-    # Save in 3 formats
     df_all.to_csv("database/full_wind_data_tidy.csv", index=False)
     df_all.to_parquet("database/full_wind_data_tidy.parquet", index=False)
 
@@ -80,6 +79,6 @@ if all_data:
     con.execute("CREATE OR REPLACE TABLE wind AS SELECT * FROM df_all")
     con.close()
 
-    print(f"✅ Done! Saved {len(df_all)} rows in CSV, Parquet & DuckDB.")
+    print(f"✅ Done: {len(df_all)} rows saved in CSV, Parquet & DuckDB formats.")
 else:
-    print("⚠️ No data was fetched.")
+    print("⚠️ No data fetched.")
