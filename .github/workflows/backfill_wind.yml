@@ -3,7 +3,10 @@
 name: Backfill Wind Data (Manual)
 
 on:
-  workflow_dispatch:  # Manual trigger from GitHub UI
+  workflow_dispatch:
+
+permissions:
+  contents: write  # ✅ Needed to push to the repo
 
 jobs:
   backfill:
@@ -13,7 +16,7 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v3
 
-    - name: 🐍 Set up Python 3.11
+    - name: 🐍 Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
@@ -26,8 +29,10 @@ jobs:
     - name: ⚡ Run backfill script
       run: python scripts/backfill_wind_15min.py
 
-    - name: 🗂️ Upload wind data
-      uses: actions/upload-artifact@v4
-      with:
-        name: wind-backfill
-        path: database/
+    - name: 📝 Commit database/ folder to repo
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git add database/
+        git commit -m "📦 Add backfilled wind data"
+        git push
