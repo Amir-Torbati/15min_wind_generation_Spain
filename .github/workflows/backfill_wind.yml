@@ -12,6 +12,9 @@ jobs:
   backfill:
     runs-on: ubuntu-latest
 
+    env:
+      ESIOS_API_TOKEN: ${{ secrets.ESIOS_API_TOKEN }}
+
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v3
@@ -34,5 +37,6 @@ jobs:
         git config --global user.name "github-actions"
         git config --global user.email "github-actions@github.com"
         git add database/
-        git commit -m "📦 Add backfilled wind data"
+        git commit -m "📦 Add backfilled wind data" || echo "No changes to commit"
+        git pull --rebase --autostash
         git push
