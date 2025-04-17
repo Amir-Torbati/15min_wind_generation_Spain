@@ -8,7 +8,7 @@ import os
 from dateutil.relativedelta import relativedelta
 
 # --- CONFIG ---
-API_TOKEN = "478a759c0ef1ce824a835ddd699195ff0f66a9b5ae3b477e88a579c6b7ec47c5"
+API_TOKEN = os.environ["ESIOS_API_TOKEN"]
 BASE_URL = "https://api.esios.ree.es/indicators/540"  # ✅ Wind indicator ID
 HEADERS = {
     "Accept": "application/json",
