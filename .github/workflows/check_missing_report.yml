@@ -1,38 +1,15 @@
-name: 🔍 Check Missing Wind Data (Weekly)
-
+name: Legacy collection retired
 on:
-  schedule:
-    - cron: '0 5 * * 1'  # Every Monday at 05:00 UTC
-  workflow_dispatch:     # Allow manual trigger too
-
+  workflow_dispatch:
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  check-missing:
-    runs-on: ubuntu-latest
-
+  migration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v3
-
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: 📦 Install Python dependencies
-        run: pip install pandas python-dateutil
-
-      - name: 🧪 Check for missing 15-min intervals
-        run: python scripts/check_missing_only.py
-
-      - name: 📤 Commit and push report
+      - name: Use the validated grouped collector
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          git add reports/missing_report.md
-          git commit -m "📊 Weekly wind data gap report" || echo "No changes to commit"
-          git pull --rebase --autostash
-          git push
+          echo 'This legacy workflow is retired; see the README migration notice.'
+          echo 'Use Amir-Torbati/ree-data-platform fundamentals.yml for the five verified curves.'
+          exit 1

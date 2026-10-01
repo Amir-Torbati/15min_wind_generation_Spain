@@ -1,42 +1,15 @@
-# .github/workflows/backfill_wind.yml
-
-name: Backfill Wind Data (Manual)
-
+name: Legacy collection retired
 on:
   workflow_dispatch:
-
 permissions:
-  contents: write  # ✅ Needed to push to the repo
-
+  contents: read
 jobs:
-  backfill:
-    runs-on: ubuntu-latest
-
-    env:
-      ESIOS_API_TOKEN: ${{ secrets.ESIOS_API_TOKEN }}
-
+  migration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
     steps:
-    - name: 📥 Checkout repository
-      uses: actions/checkout@v3
-
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: 📦 Install dependencies
-      run: |
-        pip install --upgrade pip
-        pip install pandas requests python-dateutil pyarrow duckdb
-
-    - name: ⚡ Run backfill script
-      run: python scripts/backfill_wind_15min.py
-
-    - name: 📝 Commit database/ folder to repo
-      run: |
-        git config --global user.name "github-actions"
-        git config --global user.email "github-actions@github.com"
-        git add database/
-        git commit -m "📦 Add backfilled wind data" || echo "No changes to commit"
-        git pull --rebase --autostash
-        git push
+      - name: Use the validated grouped collector
+        run: |
+          echo 'This legacy workflow is retired; see the README migration notice.'
+          echo 'Use Amir-Torbati/ree-data-platform fundamentals.yml for the five verified curves.'
+          exit 1

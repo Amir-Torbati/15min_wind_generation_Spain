@@ -1,39 +1,15 @@
-name: Fetch Full Historical Wind Data (15min)
-
-permissions:
-  contents: write
-
+name: Legacy collection retired
 on:
-  workflow_dispatch:  # 👉 Run manually from GitHub Actions tab
-
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  fetch-historical-wind:
-    runs-on: ubuntu-latest
-
-    env:
-      ESIOS_API_TOKEN: ${{ secrets.ESIOS_API_TOKEN }}
-
+  migration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
     steps:
-      - name: 📥 Checkout repo
-        uses: actions/checkout@v3
-
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: 📦 Install dependencies
-        run: pip install requests pandas pyarrow duckdb python-dateutil
-
-      - name: ⚡ Fetch historical wind (15min) and save to database
-        run: python scripts/fetch_historical_wind_15min.py
-
-      - name: 📤 Commit and push updated wind data
+      - name: Use the validated grouped collector
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-
-          git add "main database/"
-          git commit -m "🕰️ Add full historical wind 15min data" || echo "No changes to commit"
-          git pull --rebase --autostash
-          git push
+          echo 'This legacy workflow is retired; see the README migration notice.'
+          echo 'Use Amir-Torbati/ree-data-platform fundamentals.yml for the five verified curves.'
+          exit 1
